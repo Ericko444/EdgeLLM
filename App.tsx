@@ -1,6 +1,7 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useState } from 'react';
+import axios from 'axios';
 
 type Message = {
   role: 'system' | 'user' | 'assistant';
@@ -25,7 +26,70 @@ function App(): React.JSX.Element {
   const [context, setContext] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  return <View> <Text>Hello World BE</Text> </View>;
+
+  const modelFormats = [
+    { label: 'Llama-3.2-1B-Instruct' },
+    { label: 'Qwen2-0.5B-Instruct' },
+    { label: 'DeepSeek-R1-Distill-Qwen-1.5B' },
+    { label: 'SmolLM2-1.7B-Instruct' },
+  ];
+
+  const HF_TO_GGUF = {
+    "Llama-3.2-1B-Instruct": "medmekk/Llama-3.2-1B-Instruct.GGUF",
+    "DeepSeek-R1-Distill-Qwen-1.5B":
+      "medmekk/DeepSeek-R1-Distill-Qwen-1.5B.GGUF",
+    "Qwen2-0.5B-Instruct": "medmekk/Qwen2.5-0.5B-Instruct.GGUF",
+    "SmolLM2-1.7B-Instruct": "medmekk/SmolLM2-1.7B-Instruct.GGUF",
+  };
+
+  const fetchAvailableGGUFs = async (modelFormat: string) => {
+    if (!modelFormat) {
+      Alert.alert('Error', 'Please select a model format first.');
+      return;
+    }
+
+    try {
+      const repoPath = HF_TO_GGUF[modelFormat as keyof typeof HF_TO_GGUF];
+      if (!repoPath) {
+        throw new Error(
+          `No repository mapping found for model format: ${modelFormat}`,
+        );
+      }
+
+      const response = await axios.get(
+        `https://huggingface.co/api/models/${repoPath}`,
+      );
+
+      if (!response.data?.siblings) {
+        throw new Error('Invalid API response format');
+      }
+
+      const files = response.data.siblings.filter((file: { rfilename: string }) =>
+        file.rfilename.endsWith('.gguf'),
+      );
+
+      setAvailableGGUFs(files.map((file: { rfilename: string }) => file.rfilename));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to fetch .gguf files';
+      Alert.alert('Error', errorMessage);
+      setAvailableGGUFs([]);
+    }
+  };
+
+
+  return (
+    <>
+      <TouchableOpacity onPress={() => fetchAvailableGGUFs('Llama-3.2-1B-Instruct')}>
+        <Text>Fetch GGUF Files</Text>
+      </TouchableOpacity>
+      <ScrollView>
+        {availableGGUFs.map((file) => (
+          <Text key={file}>{file}</Text>
+        ))}
+      </ScrollView>
+    </>
+  );
 }
 const styles = StyleSheet.create({});
 
