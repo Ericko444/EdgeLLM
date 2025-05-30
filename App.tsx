@@ -1,7 +1,9 @@
 import React from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useState } from 'react';
 import axios from 'axios';
+import { downloadModel } from './src/api/model';
+import ProgressBar from './src/components/ProgressBar';
 
 type Message = {
   role: 'system' | 'user' | 'assistant';
@@ -77,10 +79,37 @@ function App(): React.JSX.Element {
     }
   };
 
+  const handleDownloadModel = async (file: string) => {
+    const downloadUrl = `https://huggingface.co/${HF_TO_GGUF[selectedModelFormat as keyof typeof HF_TO_GGUF]
+      }/resolve/main/${file}`;
+    // we set the isDownloading state to true to show the progress bar and set the progress to 0
+    setIsDownloading(true);
+    setProgress(0);
+
+    try {
+      // we download the model using the downloadModel function, it takes the selected GGUF file, the download URL, and a progress callback function to update the progress bar
+      const destPath = await downloadModel(file, downloadUrl, progress =>
+        setProgress(progress),
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Download failed due to an unknown error.';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+
 
   return (
-    <>
-      <TouchableOpacity onPress={() => fetchAvailableGGUFs('Llama-3.2-1B-Instruct')}>
+    <SafeAreaView>
+      <Text>Hello World</Text>
+      <TouchableOpacity
+        onPress={() => fetchAvailableGGUFs("Llama-3.2-1B-Instruct")}
+      >
         <Text>Fetch GGUF Files</Text>
       </TouchableOpacity>
       <ScrollView>
@@ -88,7 +117,35 @@ function App(): React.JSX.Element {
           <Text key={file}>{file}</Text>
         ))}
       </ScrollView>
-    </>
+
+      <View style={{ marginTop: 30, marginBottom: 15 }}>
+        {Object.keys(HF_TO_GGUF).map((format) => (
+          <TouchableOpacity
+            key={format}
+            onPress={() => {
+              setSelectedModelFormat(format);
+            }}
+          >
+            <Text>
+              {format}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={{ marginBottom: 10, color: selectedModelFormat ? 'black' : 'gray' }}>
+        {selectedModelFormat
+          ? `Selected: ${selectedModelFormat}`
+          : 'Please select a model format before downloading'}
+      </Text>
+      <TouchableOpacity
+        onPress={() => {          // Then download the model
+          handleDownloadModel("Llama-3.2-1B-Instruct-Q2_K.gguf");
+        }}
+      >
+        <Text>Download Model</Text>
+      </TouchableOpacity>
+      {isDownloading && <ProgressBar progress={progress} />}
+    </SafeAreaView>
   );
 }
 const styles = StyleSheet.create({});
