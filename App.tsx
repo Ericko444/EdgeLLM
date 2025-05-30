@@ -4,6 +4,8 @@ import { useState } from 'react';
 import axios from 'axios';
 import { downloadModel } from './src/api/model';
 import ProgressBar from './src/components/ProgressBar';
+import { initLlama, releaseAllLlama } from 'llama.rn';
+import RNFS from 'react-native-fs'; // File system module
 
 type Message = {
   role: 'system' | 'user' | 'assistant';
@@ -91,6 +93,10 @@ function App(): React.JSX.Element {
       const destPath = await downloadModel(file, downloadUrl, progress =>
         setProgress(progress),
       );
+      // Ensure the model is loaded only if the download was successful
+      if (destPath) {
+        await loadModel(file);
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -102,7 +108,37 @@ function App(): React.JSX.Element {
     }
   };
 
+  const loadModel = async (modelName: string) => {
+    try {
+      const destPath = `${RNFS.DocumentDirectoryPath}/${modelName}`;
 
+      // Ensure the model file exists before attempting to load it
+      const fileExists = await RNFS.exists(destPath);
+      if (!fileExists) {
+        Alert.alert('Error Loading Model', 'The model file does not exist.');
+        return false;
+      }
+
+      if (context) {
+        await releaseAllLlama();
+        setContext(null);
+        setConversation(INITIAL_CONVERSATION);
+      }
+
+      const llamaContext = await initLlama({
+        model: destPath,
+        use_mlock: true,
+        n_ctx: 2048,
+        n_gpu_layers: 1
+      });
+      console.log("llamaContext", llamaContext);
+      setContext(llamaContext);
+      return true;
+    } catch (error) {
+      Alert.alert('Error Loading Model', error instanceof Error ? error.message : 'An unknown error occurred.');
+      return false;
+    }
+  };
 
   return (
     <SafeAreaView>
