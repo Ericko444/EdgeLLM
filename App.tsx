@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useState } from 'react';
 import axios from 'axios';
 import { downloadModel } from './src/api/model';
@@ -140,6 +140,66 @@ function App(): React.JSX.Element {
     }
   };
 
+  const handleSendMessage = async () => {
+    // Check if context is loaded and user input is valid
+    if (!context) {
+      Alert.alert('Model Not Loaded', 'Please load the model first.');
+      return;
+    }
+
+    if (!userInput.trim()) {
+      Alert.alert('Input Error', 'Please enter a message.');
+      return;
+    }
+
+    // Previous conversation added to the new message
+    const newConversation: Message[] = [
+      ...conversation,
+      { role: 'user', content: userInput },
+    ];
+    setIsGenerating(true);
+    // Update conversation state and clear user input
+    setConversation(newConversation);
+    setUserInput('');
+
+    try {
+      // we define list the stop words for all the model formats
+      const stopWords = [
+        '</s>',
+        '<|end|>',
+        'user:',
+        'assistant:',
+        '<|im_end|>',
+        '<|eot_id|>',
+        '<|end▁of▁sentence|>',
+        '<｜end▁of▁sentence｜>',
+      ];
+      // now that we have the new conversation with the user message, we can send it to the model
+      const result = await context.completion({
+        messages: newConversation,
+        n_predict: 10000,
+        stop: stopWords,
+      });
+
+      if (result && result.text) {
+        setConversation(prev => [
+          ...prev,
+          { role: 'assistant', content: result.text.trim() },
+        ]);
+      } else {
+        throw new Error('No response from the model.');
+      }
+    } catch (error) {
+      Alert.alert(
+        'Error During Inference',
+        error instanceof Error ? error.message : 'An unknown error occurred.',
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+
   return (
     <SafeAreaView>
       <Text>Hello World</Text>
@@ -181,6 +241,33 @@ function App(): React.JSX.Element {
         <Text>Download Model</Text>
       </TouchableOpacity>
       {isDownloading && <ProgressBar progress={progress} />}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginVertical: 10,
+          marginHorizontal: 10,
+        }}
+      >
+        <TextInput
+          style={{ flex: 1, borderWidth: 1 }}
+          value={userInput}
+          onChangeText={setUserInput}
+          placeholder="Type your message here..."
+        />
+        <TouchableOpacity
+          onPress={handleSendMessage}
+          style={{ backgroundColor: "#007AFF" }}
+        >
+          <Text style={{ color: "white" }}>Send</Text>
+        </TouchableOpacity>
+      </View>
+      <ScrollView>
+        {conversation.map((msg, index) => (
+          <Text style={{ marginVertical: 10 }} key={index}>{msg.content}</Text>
+        ))}
+      </ScrollView>
+
     </SafeAreaView>
   );
 }
