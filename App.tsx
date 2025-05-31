@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useState } from 'react';
 import axios from 'axios';
 import { downloadModel } from './src/api/model';
@@ -33,6 +33,7 @@ function App(): React.JSX.Element {
   const [currentPage, setCurrentPage] = useState<
     'modelSelection' | 'conversation'
   >('modelSelection');
+  const [isFetching, setIsFetching] = useState<boolean>(false);
 
   const modelFormats = [
     { label: 'Llama-3.2-1B-Instruct' },
@@ -54,7 +55,7 @@ function App(): React.JSX.Element {
       Alert.alert('Error', 'Please select a model format first.');
       return;
     }
-
+    setIsFetching(true);
     try {
       const repoPath = HF_TO_GGUF[modelFormat as keyof typeof HF_TO_GGUF];
       if (!repoPath) {
@@ -81,6 +82,9 @@ function App(): React.JSX.Element {
         error instanceof Error ? error.message : 'Failed to fetch .gguf files';
       Alert.alert('Error', errorMessage);
       setAvailableGGUFs([]);
+    }
+    finally {
+      setIsFetching(false);
     }
   };
 
@@ -208,12 +212,33 @@ function App(): React.JSX.Element {
     fetchAvailableGGUFs(format);
   };
 
+  const handleGGUFSelection = (file: string) => {
+    setSelectedGGUF(file);
+    Alert.alert(
+      'Confirm Download',
+      `Do you want to download ${file}?`,
+      [
+        {
+          text: 'No',
+          onPress: () => setSelectedGGUF(null),
+          style: 'cancel',
+        },
+        { text: 'Yes', onPress: () => handleDownloadAndNavigate(file) },
+      ],
+      { cancelable: false },
+    );
+  };
+  const handleDownloadAndNavigate = async (file: string) => {
+    await handleDownloadModel(file);
+    setCurrentPage('conversation'); // Navigate to conversation after download
+  };
+
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollView}>
         <Text style={styles.title}>LLM Chat</Text>
-        {currentPage === 'modelSelection' && (
+        {currentPage === 'modelSelection' && !isDownloading && (
           <View style={styles.card}>
             <Text style={styles.subtitle}>Choose a model format</Text>
             {modelFormats.map(format => (
@@ -227,8 +252,39 @@ function App(): React.JSX.Element {
                 <Text style={styles.buttonText}>{format.label}</Text>
               </TouchableOpacity>
             ))}
+            {
+              selectedModelFormat && (
+                <View>
+                  <Text style={styles.subtitle}>Select a .gguf file</Text>
+                  {isFetching && (
+                    <ActivityIndicator size="small" color="#2563EB" />
+                  )}
+                  {availableGGUFs.map((file, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.button,
+                        selectedGGUF === file && styles.selectedButton,
+                      ]}
+                      onPress={() => handleGGUFSelection(file)}>
+                      <Text style={styles.buttonTextGGUF}>{file}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                </View>
+              )
+            }
           </View>
         )}
+        {
+          isDownloading && (
+            <View style={styles.card}>
+              <Text style={styles.subtitle}>Downloading : </Text>
+              <Text style={styles.subtitle2}>{selectedGGUF}</Text>
+              <ProgressBar progress={progress} />
+            </View>
+          )
+        }
         {currentPage === 'conversation' && (
           <>
             <TouchableOpacity
