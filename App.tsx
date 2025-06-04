@@ -285,75 +285,54 @@ function App(): React.JSX.Element {
             </View>
           )
         }
-        {currentPage === 'conversation' && (
-          <>
-            <TouchableOpacity
-              onPress={() => fetchAvailableGGUFs("Llama-3.2-1B-Instruct")}
-            >
-              <Text>Fetch GGUF Files</Text>
-            </TouchableOpacity>
-            <ScrollView>
-              {availableGGUFs.map((file) => (
-                <Text key={file}>{file}</Text>
-              ))}
-            </ScrollView>
-
-            <View style={{ marginTop: 30, marginBottom: 15 }}>
-              {Object.keys(HF_TO_GGUF).map((format) => (
-                <TouchableOpacity
-                  key={format}
-                  onPress={() => {
-                    setSelectedModelFormat(format);
-                  }}
-                >
-                  <Text>
-                    {format}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={{ marginBottom: 10, color: selectedModelFormat ? 'black' : 'gray' }}>
-              {selectedModelFormat
-                ? `Selected: ${selectedModelFormat}`
-                : 'Please select a model format before downloading'}
+        {currentPage == 'conversation' && !isDownloading && (
+          <View style={styles.chatContainer}>
+            <Text style={styles.greetingText}>
+              🦙 Welcome! Llama is ready to chat. Ask anything !
             </Text>
-            <TouchableOpacity
-              onPress={() => {          // Then download the model
-                handleDownloadModel("Llama-3.2-1B-Instruct-Q2_K.gguf");
-              }}
-            >
-              <Text>Download Model</Text>
-            </TouchableOpacity>
-            {isDownloading && <ProgressBar progress={progress} />}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginVertical: 10,
-                marginHorizontal: 10,
-              }}
-            >
-              <TextInput
-                style={{ flex: 1, borderWidth: 1 }}
-                value={userInput}
-                onChangeText={setUserInput}
-                placeholder="Type your message here..."
-              />
-              <TouchableOpacity
-                onPress={handleSendMessage}
-                style={{ backgroundColor: "#007AFF" }}
-              >
-                <Text style={{ color: "white" }}>Send</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView>
-              {conversation.map((msg, index) => (
-                <Text style={{ marginVertical: 10 }} key={index}>{msg.content}</Text>
-              ))}
-            </ScrollView>
-          </>
+            {conversation.slice(1).map((msg, index) => ( // Slice 1 to skip the system message
+              <View key={index} style={styles.messageWrapper}>
+                <View
+                  style={[
+                    styles.messageBubble,
+                    msg.role === 'user'
+                      ? styles.userBubble
+                      : styles.llamaBubble,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.messageText,
+                      msg.role === 'user' && styles.userMessageText,
+                    ]}>
+                    {msg.content}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
         )}
       </ScrollView>
+      {currentPage === 'conversation' && (
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type your message..."
+            placeholderTextColor="#94A3B8"
+            value={userInput}
+            onChangeText={setUserInput}
+          />
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.sendButton}
+              onPress={handleSendMessage}
+              disabled={isGenerating}>
+              <Text style={styles.buttonText}>
+                {isGenerating ? 'Sending...' : 'Send'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
