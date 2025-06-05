@@ -78,10 +78,10 @@ The application currently supports selecting from the following model formats, w
 * SmolLM2-1.7B-Instruct (from medmekk/SmolLM2-1.7B-Instruct.GGUF)
 
 ## Now what? Next steps :
-✅ Offline Chat
-⌛ Explore new models
-⌛ Customized UI and chat experience
-⌛ Voice mode (using audio models, TTS and STT modules)
-⌛ Multi-modal capabilities (audio, images, video)
+* ✅ Offline Chat
+* ⌛ Explore new models
+* ⌛ Customized UI and chat experience
+* ⌛ Voice mode (using audio models, TTS and STT modules)
+* ⌛ Multi-modal capabilities (audio, images, video)
 
 > This project will serve as a base for my future mobile AI-powered projects, on the way ⌛⌛⌛
