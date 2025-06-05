@@ -10,10 +10,13 @@ A variant of llama.cpp in React Native, 'llama.rn' is the key component to make 
 
 *   **Model Selection:** Choose from a curated list of supported LLM formats.
 <img src="./assets/Screenshot1.png" alt="Project Screenshot" width="400">
+
 *   **Dynamic GGUF Fetching:** Fetches available GGUF (quantized models) files for the selected model format from Hugging Face.
 <img src="./assets/Screenshot2.png" alt="Project Screenshot" width="400">
+
 *   **On-Device Model Download:** Download selected GGUF model files directly to your device's storage.
 <img src="./assets/Screenshot3.png" alt="Project Screenshot" width="400">
+
 *   **Local LLM Inference:** Utilizes `llama.rn` to run LLMs locally on your device.
 *   **Chat Interface:** Engage in text-based conversations with the loaded LLM.
 <img src="./assets/Screenshot4.png" alt="Project Screenshot" width="400">
