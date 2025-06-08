@@ -7,7 +7,7 @@ import ProgressBar from './src/components/ProgressBar';
 import { initLlama, releaseAllLlama } from 'llama.rn';
 import RNFS from 'react-native-fs'; // File system module
 import { Message } from './src/types';
-import { INITIAL_CONVERSATION } from './src/constants';
+import { INITIAL_CONVERSATION, MODEL_FORMATS, HF_TO_GGUF_REPO, CHAT_STOP_WORDS } from './src/constants';
 
 function App(): React.JSX.Element {
   const [conversation, setConversation] = useState<Message[]>(INITIAL_CONVERSATION);
@@ -31,7 +31,7 @@ function App(): React.JSX.Element {
     { label: 'SmolLM2-1.7B-Instruct' },
   ];
 
-  const HF_TO_GGUF = {
+  const HF_TO_GGUF_REPO = {
     "Llama-3.2-1B-Instruct": "medmekk/Llama-3.2-1B-Instruct.GGUF",
     "DeepSeek-R1-Distill-Qwen-1.5B":
       "medmekk/DeepSeek-R1-Distill-Qwen-1.5B.GGUF",
@@ -46,7 +46,7 @@ function App(): React.JSX.Element {
     }
     setIsFetching(true);
     try {
-      const repoPath = HF_TO_GGUF[modelFormat as keyof typeof HF_TO_GGUF];
+      const repoPath = HF_TO_GGUF_REPO[modelFormat as keyof typeof HF_TO_GGUF_REPO];
       if (!repoPath) {
         throw new Error(
           `No repository mapping found for model format: ${modelFormat}`,
@@ -78,7 +78,7 @@ function App(): React.JSX.Element {
   };
 
   const handleDownloadModel = async (file: string) => {
-    const downloadUrl = `https://huggingface.co/${HF_TO_GGUF[selectedModelFormat as keyof typeof HF_TO_GGUF]
+    const downloadUrl = `https://huggingface.co/${HF_TO_GGUF_REPO[selectedModelFormat as keyof typeof HF_TO_GGUF_REPO]
       }/resolve/main/${file}`;
     // we set the isDownloading state to true to show the progress bar and set the progress to 0
     setIsDownloading(true);
@@ -159,22 +159,11 @@ function App(): React.JSX.Element {
     setUserInput('');
 
     try {
-      // we define list the stop words for all the model formats
-      const stopWords = [
-        '</s>',
-        '<|end|>',
-        'user:',
-        'assistant:',
-        '<|im_end|>',
-        '<|eot_id|>',
-        '<|end▁of▁sentence|>',
-        '<｜end▁of▁sentence｜>',
-      ];
       // now that we have the new conversation with the user message, we can send it to the model
       const result = await context.completion({
         messages: newConversation,
         n_predict: 10000,
-        stop: stopWords,
+        stop: CHAT_STOP_WORDS,
       });
 
       if (result && result.text) {
@@ -230,7 +219,7 @@ function App(): React.JSX.Element {
         {currentPage === 'modelSelection' && !isDownloading && (
           <View style={styles.card}>
             <Text style={styles.subtitle}>Choose a model format</Text>
-            {modelFormats.map(format => (
+            {MODEL_FORMATS.map(format => (
               <TouchableOpacity
                 key={format.label}
                 style={[
