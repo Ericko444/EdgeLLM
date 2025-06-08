@@ -6,19 +6,8 @@ import { downloadModel } from './src/api/model';
 import ProgressBar from './src/components/ProgressBar';
 import { initLlama, releaseAllLlama } from 'llama.rn';
 import RNFS from 'react-native-fs'; // File system module
-
-type Message = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
-const INITIAL_CONVERSATION: Message[] = [
-  {
-    role: 'system',
-    content:
-      'This is a conversation between user and assistant, a friendly chatbot.',
-  },
-];
+import { Message } from './src/types';
+import { INITIAL_CONVERSATION } from './src/constants';
 
 function App(): React.JSX.Element {
   const [conversation, setConversation] = useState<Message[]>(INITIAL_CONVERSATION);
