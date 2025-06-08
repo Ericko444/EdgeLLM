@@ -1,318 +1,111 @@
-import React from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useState } from 'react';
-import axios from 'axios';
-import { downloadModel } from './src/api/model';
-import ProgressBar from './src/components/ProgressBar';
-import { initLlama, releaseAllLlama } from 'llama.rn';
-import RNFS from 'react-native-fs'; // File system module
-import { Message } from './src/types';
-import { INITIAL_CONVERSATION, MODEL_FORMATS, HF_TO_GGUF_REPO, CHAT_STOP_WORDS } from './src/constants';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import RNFS from 'react-native-fs';
+
+import { useLlama } from './src/hooks/useLlama';
+import ModelSelectionScreen from './src/components/ModelSelectionScreen';
+import ChatScreen from './src/components/ChatScreen';
+import { INITIAL_CONVERSATION } from './src/constants';
+
+type CurrentPage = 'modelSelection' | 'conversation';
 
 function App(): React.JSX.Element {
-  const [conversation, setConversation] = useState<Message[]>(INITIAL_CONVERSATION);
-  const [selectedModelFormat, setSelectedModelFormat] = useState<string>('');
-  const [selectedGGUF, setSelectedGGUF] = useState<string | null>(null);
-  const [availableGGUFs, setAvailableGGUFs] = useState<string[]>([]);
-  const [userInput, setUserInput] = useState<string>('');
-  const [progress, setProgress] = useState<number>(0);
-  const [context, setContext] = useState<any>(null);
-  const [isDownloading, setIsDownloading] = useState<boolean>(false);
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [currentPage, setCurrentPage] = useState<
-    'modelSelection' | 'conversation'
-  >('modelSelection');
-  const [isFetching, setIsFetching] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<CurrentPage>('modelSelection');
+  const [currentModelName, setCurrentModelName] = useState<string | null>(null);
 
-  const modelFormats = [
-    { label: 'Llama-3.2-1B-Instruct' },
-    { label: 'Qwen2-0.5B-Instruct' },
-    { label: 'DeepSeek-R1-Distill-Qwen-1.5B' },
-    { label: 'SmolLM2-1.7B-Instruct' },
-  ];
+  const {
+    context: llamaContext,
+    isModelLoading,
+    isGenerating,
+    conversation,
+    loadLlamaModel,
+    releaseLlamaModel,
+    generateChatCompletion,
+    setConversation, // From useLlama
+  } = useLlama();
 
-  const HF_TO_GGUF_REPO = {
-    "Llama-3.2-1B-Instruct": "medmekk/Llama-3.2-1B-Instruct.GGUF",
-    "DeepSeek-R1-Distill-Qwen-1.5B":
-      "medmekk/DeepSeek-R1-Distill-Qwen-1.5B.GGUF",
-    "Qwen2-0.5B-Instruct": "medmekk/Qwen2.5-0.5B-Instruct.GGUF",
-    "SmolLM2-1.7B-Instruct": "medmekk/SmolLM2-1.7B-Instruct.GGUF",
-  };
-
-  const fetchAvailableGGUFs = async (modelFormat: string) => {
-    if (!modelFormat) {
-      Alert.alert('Error', 'Please select a model format first.');
-      return;
+  const handleModelDownloaded = useCallback(async (modelFileName: string) => {
+    console.log(`Model ${modelFileName} downloaded, attempting to load.`);
+    setCurrentModelName(modelFileName);
+    const loadedContext = await loadLlamaModel(modelFileName);
+    if (loadedContext) {
+      setCurrentPage('conversation');
+    } else {
+      Alert.alert("Model Load Failed", "Could not load the model. Please try another or re-download.");
+      setCurrentModelName(null); // Reset if load failed
+      setCurrentPage('modelSelection'); // Ensure user can select again
     }
-    setIsFetching(true);
-    try {
-      const repoPath = HF_TO_GGUF_REPO[modelFormat as keyof typeof HF_TO_GGUF_REPO];
-      if (!repoPath) {
-        throw new Error(
-          `No repository mapping found for model format: ${modelFormat}`,
-        );
-      }
+  }, [loadLlamaModel]);
 
-      const response = await axios.get(
-        `https://huggingface.co/api/models/${repoPath}`,
-      );
+  const handleSendMessage = useCallback(async (message: string) => {
+    await generateChatCompletion(message);
+  }, [generateChatCompletion]);
 
-      if (!response.data?.siblings) {
-        throw new Error('Invalid API response format');
-      }
-
-      const files = response.data.siblings.filter((file: { rfilename: string }) =>
-        file.rfilename.endsWith('.gguf'),
-      );
-
-      setAvailableGGUFs(files.map((file: { rfilename: string }) => file.rfilename));
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to fetch .gguf files';
-      Alert.alert('Error', errorMessage);
-      setAvailableGGUFs([]);
-    }
-    finally {
-      setIsFetching(false);
-    }
-  };
-
-  const handleDownloadModel = async (file: string) => {
-    const downloadUrl = `https://huggingface.co/${HF_TO_GGUF_REPO[selectedModelFormat as keyof typeof HF_TO_GGUF_REPO]
-      }/resolve/main/${file}`;
-    // we set the isDownloading state to true to show the progress bar and set the progress to 0
-    setIsDownloading(true);
-    setProgress(0);
-
-    try {
-      // we download the model using the downloadModel function, it takes the selected GGUF file, the download URL, and a progress callback function to update the progress bar
-      const destPath = await downloadModel(file, downloadUrl, progress =>
-        setProgress(progress),
-      );
-      // Ensure the model is loaded only if the download was successful
-      if (destPath) {
-        await loadModel(file);
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Download failed due to an unknown error.';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const loadModel = async (modelName: string) => {
-    try {
-      const destPath = `${RNFS.DocumentDirectoryPath}/${modelName}`;
-
-      // Ensure the model file exists before attempting to load it
-      const fileExists = await RNFS.exists(destPath);
-      if (!fileExists) {
-        Alert.alert('Error Loading Model', 'The model file does not exist.');
-        return false;
-      }
-
-      if (context) {
-        await releaseAllLlama();
-        setContext(null);
-        setConversation(INITIAL_CONVERSATION);
-      }
-
-      const llamaContext = await initLlama({
-        model: destPath,
-        use_mlock: true,
-        n_ctx: 2048,
-        n_gpu_layers: 1
-      });
-      console.log("llamaContext", llamaContext);
-      setContext(llamaContext);
-      return true;
-    } catch (error) {
-      Alert.alert('Error Loading Model', error instanceof Error ? error.message : 'An unknown error occurred.');
-      return false;
-    }
-  };
-
-  const handleSendMessage = async () => {
-    // Check if context is loaded and user input is valid
-    if (!context) {
-      Alert.alert('Model Not Loaded', 'Please load the model first.');
-      return;
-    }
-
-    if (!userInput.trim()) {
-      Alert.alert('Input Error', 'Please enter a message.');
-      return;
-    }
-
-    // Previous conversation added to the new message
-    const newConversation: Message[] = [
-      ...conversation,
-      { role: 'user', content: userInput },
-    ];
-    setIsGenerating(true);
-    // Update conversation state and clear user input
-    setConversation(newConversation);
-    setUserInput('');
-
-    try {
-      // now that we have the new conversation with the user message, we can send it to the model
-      const result = await context.completion({
-        messages: newConversation,
-        n_predict: 10000,
-        stop: CHAT_STOP_WORDS,
-      });
-
-      if (result && result.text) {
-        setConversation(prev => [
-          ...prev,
-          { role: 'assistant', content: result.text.trim() },
-        ]);
-      } else {
-        throw new Error('No response from the model.');
-      }
-    } catch (error) {
-      Alert.alert(
-        'Error During Inference',
-        error instanceof Error ? error.message : 'An unknown error occurred.',
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleFormatSelection = (format: string) => {
-    setSelectedModelFormat(format);
-    setAvailableGGUFs([]);
-    fetchAvailableGGUFs(format);
-  };
-
-  const handleGGUFSelection = (file: string) => {
-    setSelectedGGUF(file);
-    Alert.alert(
-      'Confirm Download',
-      `Do you want to download ${file}?`,
-      [
-        {
-          text: 'No',
-          onPress: () => setSelectedGGUF(null),
-          style: 'cancel',
-        },
-        { text: 'Yes', onPress: () => handleDownloadAndNavigate(file) },
-      ],
-      { cancelable: false },
-    );
-  };
-  const handleDownloadAndNavigate = async (file: string) => {
-    await handleDownloadModel(file);
-    setCurrentPage('conversation'); // Navigate to conversation after download
-  };
+  const navigateToModelSelection = useCallback(async () => {
+    // Optionally release model when going back
+    // await releaseLlamaModel();
+    // setCurrentModelName(null);
+    // setConversation(INITIAL_CONVERSATION); // Reset conversation state
+    setCurrentPage('modelSelection');
+  }, []);
 
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollView}>
-        <Text style={styles.title}>LLM Chat</Text>
-        {currentPage === 'modelSelection' && !isDownloading && (
-          <View style={styles.card}>
-            <Text style={styles.subtitle}>Choose a model format</Text>
-            {MODEL_FORMATS.map(format => (
-              <TouchableOpacity
-                key={format.label}
-                style={[
-                  styles.button,
-                  selectedModelFormat === format.label && styles.selectedButton,
-                ]}
-                onPress={() => handleFormatSelection(format.label)}>
-                <Text style={styles.buttonText}>{format.label}</Text>
-              </TouchableOpacity>
-            ))}
-            {
-              selectedModelFormat && (
-                <View>
-                  <Text style={styles.subtitle}>Select a .gguf file</Text>
-                  {isFetching && (
-                    <ActivityIndicator size="small" color="#2563EB" />
-                  )}
-                  {availableGGUFs.map((file, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.button,
-                        selectedGGUF === file && styles.selectedButton,
-                      ]}
-                      onPress={() => handleGGUFSelection(file)}>
-                      <Text style={styles.buttonTextGGUF}>{file}</Text>
-                    </TouchableOpacity>
-                  ))}
+  // Effect to release model on app close (though this is hard to guarantee in RN)
+  useEffect(() => {
+    return () => {
+      console.log("App unmounting, releasing Llama model if any.");
+      releaseLlamaModel();
+    };
+  }, [releaseLlamaModel]);
 
-                </View>
-              )
-            }
-          </View>
-        )}
-        {
-          isDownloading && (
-            <View style={styles.card}>
-              <Text style={styles.subtitle}>Downloading : </Text>
-              <Text style={styles.subtitle2}>{selectedGGUF}</Text>
-              <ProgressBar progress={progress} />
-            </View>
-          )
-        }
-        {currentPage == 'conversation' && !isDownloading && (
-          <View style={styles.chatContainer}>
-            <Text style={styles.greetingText}>
-              🦙 Welcome! Llama is ready to chat. Ask anything !
-            </Text>
-            {conversation.slice(1).map((msg, index) => ( // Slice 1 to skip the system message
-              <View key={index} style={styles.messageWrapper}>
-                <View
-                  style={[
-                    styles.messageBubble,
-                    msg.role === 'user'
-                      ? styles.userBubble
-                      : styles.llamaBubble,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.messageText,
-                      msg.role === 'user' && styles.userMessageText,
-                    ]}>
-                    {msg.content}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
-      {currentPage === 'conversation' && (
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Type your message..."
-            placeholderTextColor="#94A3B8"
-            value={userInput}
-            onChangeText={setUserInput}
-          />
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={styles.sendButton}
-              onPress={handleSendMessage}
-              disabled={isGenerating}>
-              <Text style={styles.buttonText}>
-                {isGenerating ? 'Sending...' : 'Send'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+
+  const renderContent = () => {
+    if (isModelLoading) {
+      return (
+        <View style={styles.centeredMessage}>
+          <ActivityIndicator size="large" color="#2563EB" />
+          <Text style={styles.loadingText}>Loading model: {currentModelName || ''}...</Text>
         </View>
-      )}
-    </SafeAreaView>
-  );
+      );
+    }
+
+    switch (currentPage) {
+      case 'modelSelection':
+        return (
+          <ScrollView contentContainerStyle={styles.scrollView}>
+            <Text style={styles.title}>LLM Chat</Text>
+            <ModelSelectionScreen
+              onModelDownloaded={handleModelDownloaded}
+              styles={styles}
+            />
+          </ScrollView>
+        );
+      case 'conversation':
+        return (
+          <ChatScreen
+            llamaContext={llamaContext}
+            conversation={conversation}
+            isGenerating={isGenerating}
+            onSendMessage={handleSendMessage}
+            onGoBack={navigateToModelSelection}
+            styles={styles}
+            modelName={currentModelName || undefined}
+          />
+        );
+      default:
+        return <Text>Unknown page</Text>;
+    }
+  };
+
+  return <SafeAreaView style={styles.container}>{renderContent()}</SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
@@ -322,6 +115,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     padding: 16,
+    flexGrow: 1,
   },
   title: {
     fontSize: 32,
@@ -334,12 +128,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 24,
-    margin: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
     shadowColor: '#475569',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
@@ -358,17 +150,14 @@ const styles = StyleSheet.create({
     color: '#93C5FD',
   },
   button: {
-    backgroundColor: '#93C5FD', // Lighter blue
+    backgroundColor: '#93C5FD',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
     marginVertical: 6,
-    shadowColor: '#93C5FD', // Matching lighter shadow color
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.15, // Slightly reduced opacity for subtle shadows
+    shadowColor: '#93C5FD',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 2,
   },
@@ -387,15 +176,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  chatContainer: {
+  chatContainerScroll: {
     flex: 1,
     backgroundColor: '#F8FAFC',
-    borderRadius: 16,
+  },
+  chatContentContainer: {
     padding: 16,
-    marginBottom: 16,
+    paddingBottom: 20,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  backButton: {
+    paddingRight: 15,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#3B82F6',
+    fontWeight: '500',
+  },
+  modelNameText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#334155',
+    flex: 1,
+    textAlign: 'center'
   },
   messageWrapper: {
     marginBottom: 16,
+    flexDirection: 'row',
   },
   messageBubble: {
     padding: 12,
@@ -405,12 +220,14 @@ const styles = StyleSheet.create({
   userBubble: {
     alignSelf: 'flex-end',
     backgroundColor: '#3B82F6',
+    marginLeft: 'auto',
   },
   llamaBubble: {
     alignSelf: 'flex-start',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    marginRight: 'auto',
   },
   messageText: {
     fontSize: 16,
@@ -424,40 +241,51 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginVertical: 12,
-    color: '#64748B', // Soft gray that complements #2563EB
+    color: '#64748B',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
   },
   input: {
+    flex: 1,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     fontSize: 16,
     color: '#334155',
+    maxHeight: 100,
   },
   sendButton: {
     backgroundColor: '#3B82F6',
     paddingVertical: 14,
-    paddingHorizontal: 24,
+    paddingHorizontal: 18,
     borderRadius: 12,
-    shadowColor: '#3B82F6',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 48,
   },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
+  disabledButton: {
+    backgroundColor: '#A5B4FC',
   },
-  inputContainer: {
-    flexDirection: 'column',
-    gap: 12,
-    margin: 16,
+  centeredMessage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#334155',
   },
 });
 
